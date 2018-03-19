@@ -50,11 +50,18 @@ class InputMapping:
             Action_five = 5
             Action_six = 6
             Action_seven = 7
-        
+            Main_Attack = 8
+            Tilt_Right = 9
+            Tilt_Left = 10
+            Tilt_Up = 11
+            Tilt_Down = 12
+            Special_Attack = 13
+
         class State:
-            State_one = 1
-            State_two = 2 
-            State_three = 3
+            Right = 1
+            Left = 2 
+            Up = 3
+            Down = 4
 
         class Range:
             Range_one = 1
@@ -63,26 +70,36 @@ class InputMapping:
     #------------------------------------------------#
 
     class ContextID:
-        Running = 0
-        Falling = 1
-        NoIDs   = 1
+        Directions = 0
+        Attacking  = 1
+        
+        IDs = [self.Directions, self.Attacking]
         
 
     class ContextMaker:
-        _IDMap = { ContextID.Running : _context1,
-                  ContextID.Falling : _context2}
+        IDMap = {ContextID.Directions : _Directions,
+                 ContextID.Attacking  : _Attacking}
 
         def Make(self, ID):
             return _IDMap[ID]()
             
-        def _context1(self):
-            return {}, {K_a: InputConstants.State.State_one,
-                        K_d: InputConstants.State.State_two}
+        def _Directions(self):
+            action = {K_a: InputConstants.Action.Tilt_Left,
+                      K_d: InputConstants.Action.Tilt_Right,
+                      K_s: InputConstants.Action.Tilt_Down,
+                      K_w: InputConstants.Action.Tilt_Up}
+            state  = {K_a: InputConstants.State.Left,
+                      K_d: InputConstants.State.Right,
+                      K_s: InputConstants.State.Down,
+                      K_w: InputConstants.State.Up}
+            return action, state
 
-        def _context2(self):
-            return {K_w: InputConstants.Action.Action_one,
-                    K_s: InputConstants.Action.Action_two}
-                  ,{K_shift: InputConstants.State.State_three}
+        def _Attacking(self):
+            action = {K_down : InputConstants.Action.Main_Attack,
+                      K_Right: InputConstants.Action.Special_Attack}
+            state  = {}
+            return action, state
+ 
 
     #------------------------------------------------#
 
@@ -120,6 +137,10 @@ class InputMapping:
         def EatAction(self, action):
             self.Actions.remove(action)
 
+        def EatActions(self, actions):
+            for action in actions:
+                EatAction(action)
+
         def EatState(self, state):
             self.States.remove(state)
 
@@ -134,7 +155,7 @@ class InputMapping:
 
         def __init__(self):
             #make all contexts
-            for ID in range(ContextID.NoIDs):
+            for ID in ContextID.IDs
                 _inputContext[ID] = InputContext(ID)
 
         def Clear(self):
@@ -186,7 +207,7 @@ class InputMapping:
 
         def _MapButtonToState(self, button, state):
             for context in _activeContexts:
-                if context.MapButtonToState(abutton, state):
+                if context.MapButtonToState(button, state):
                     return True
             return False
 
