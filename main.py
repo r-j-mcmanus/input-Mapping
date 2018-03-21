@@ -43,19 +43,22 @@
 class InputMapping:
     class InputConstants:
         class Action:
-            Action_one = 1 
-            Action_two = 2
-            Action_three = 3
-            Action_four = 4
-            Action_five = 5
-            Action_six = 6
-            Action_seven = 7
-            Main_Attack = 8
-            Tilt_Right = 9
-            Tilt_Left = 10
-            Tilt_Up = 11
-            Tilt_Down = 12
-            Special_Attack = 13
+            #Lower Actions
+            Main_Attack = 1
+            Tilt_Right = 2
+            Tilt_Left = 3
+            Tilt_Up = 4
+            Tilt_Down = 5
+            Special_Attack = 6
+            #Higher Actions
+            Tilt_Left_Main_Attack = 101
+            Tilt_Up_Main_Attack = 102
+            Tilt_Down_Main_Attack = 103
+            Tilt_Right_Main_Attack = 104
+            Tilt_Left_Special_Attack = 105
+            Tilt_Up_Special_Attack = 106
+            Tilt_Down_Special_Attack = 107
+            Tilt_Right_Special_Attack = 108
 
         class State:
             Right = 1
@@ -69,16 +72,16 @@ class InputMapping:
 
     #------------------------------------------------#
 
-    class ContextID:
+    class _LowerContextID:
         Directions = 0
         Attacking  = 1
         
         IDs = [self.Directions, self.Attacking]
         
 
-    class ContextMaker:
-        IDMap = {ContextID.Directions : _Directions,
-                 ContextID.Attacking  : _Attacking}
+    class LowerContextMaker:
+        IDMap = {_LowerContextID.Directions : _Directions,
+                 _LowerContextID.Attacking  : _Attacking}
 
         def Make(self, ID):
             return _IDMap[ID]()
@@ -99,17 +102,39 @@ class InputMapping:
                       K_Right: InputConstants.Action.Special_Attack}
             state  = {}
             return action, state
- 
+
+    class _HigherContextID:
+        TiltAttack = 0
+        
+        IDs = [self.TiltAttack]
+
+    class HigerContextMaker:
+        IDMap = {_HigherContextID.TiltAttack  : _Attacking}
+
+        def Make(self, ID):
+            return _IDMap[ID]()
+            
+        def _TiltAttack(self):
+            action = {(InputConstants.Action.Main_attack   , InputConstants.Action.Tilt_Right) : InputConstants.Action.Tilt_Right_Main_Attack,
+                      (InputConstants.Action.Main_attack   , InputConstants.Action.Tilt_Left)  : InputConstants.Action.Tilt_Left_Main_Attack,
+                      (InputConstants.Action.Main_attack   , InputConstants.Action.Tilt_Up)    : InputConstants.Action.Tilt_Up_Main_Attack,
+                      (InputConstants.Action.Main_attack   , InputConstants.Action.Tilt_Down)  : InputConstants.Action.Tilt_Down_Main_Attack, 
+                      (InputConstants.Action.Special_attack, InputConstants.Action.Tilt_Right) : InputConstants.Action.Tilt_Right_Special_Attack,
+                      (InputConstants.Action.Special_attack, InputConstants.Action.Tilt_Left)  : InputConstants.Action.Tilt_Left_Special_Attack,
+                      (InputConstants.Action.Special_attack, InputConstants.Action.Tilt_Up)    : InputConstants.Action.Tilt_Up_Special_Attack,
+                      (InputConstants.Action.Special_attack, InputConstants.Action.Tilt_Down)  : InputConstants.Action.Tilt_Down_Special_Attack}
+            state = {}
+            return action, state
 
     #------------------------------------------------#
 
-    class InputContext:
+    class InputLowerContext:
 
         _actionMap = {}#{button: action}
         _stateMap  = {}#{button: state}
 
-        def __init__(self, contextID):
-            _actionMap, _stateMap = ContextMaker.Make(contextID)
+        def __init__(self, lowerContextID):
+            _actionMap, _stateMap = LowerContextMaker.Make(lowerContextID)
 
         def MapButtonToAction(self, button, action):
             # map a raw button to an action
@@ -125,8 +150,27 @@ class InputMapping:
                 return True
             return False
 
-        def _make(self, contextID):
-            pass
+    class InputHigherContext:
+
+        _actionMap = {}#{combo: action}
+        _stateMap  = {}#{combo: state}
+
+        def __init__(self, HigherContextID):
+            _actionMap, _stateMap = HigherContextMaker.Make(lowerContextID)
+
+        def MapLowerToHigher(self, mappedInput, action):
+            # map a combo of actions to to an action
+            for combo in _actionMap.keys():
+                if mappedInput.Actions >= combo #check is one is subset of other
+                    mappedInput.Actions -= combo
+                    mappedInput.Actions.add(_actionMap[combo])
+
+        #def MapButtonToState(self, button, action):
+        #    # map a raw button to a state
+        #    if button in _stateMap.keys():
+        #        action = _stateMap[button]
+        #        return True
+        #    return False
 
     #------------------------------------------------#
 
@@ -137,10 +181,6 @@ class InputMapping:
         def EatAction(self, action):
             self.Actions.remove(action)
 
-        def EatActions(self, actions):
-            for action in actions:
-                EatAction(action)
-
         def EatState(self, state):
             self.States.remove(state)
 
@@ -148,78 +188,92 @@ class InputMapping:
 
     class InputMapper:
 
-        _inputContext = {}#{contextID: InputContext}
-        _activeContexts = set([])
+        _inputLowerContext = {}                  #{contextID: InputContext}
+        _activeLowerContexts = set([])
+        _inputHigherContext = {}                 #{contextID: InputContext}
+        _activeHigherContexts = set([])
         _mappedInput = MappedInput()
-        _callbackTable = {}#(int, inputCallback)
+        _callbackTable = {}                      #(int, inputCallback)
 
         def __init__(self):
             #make all contexts
-            for ID in ContextID.IDs
-                _inputContext[ID] = InputContext(ID)
+            for ID in _LowerContextID.IDs
+                _inputLowerContext[ID] = InputLowerContext(ID)
+            for ID in _HigherContextID.IDs
+                _inputHigherContext[ID] = InputHigherContext(ID)
 
         def Clear(self):
-            _mappedInput.Actions.clear()
-            _mappedInput.States.clear()
+            self._mappedInput.Actions.clear()
+            self._mappedInput.States.clear()
             # Note: we do NOT clear states, because they need to remain set
 	        # across frames so that they don't accidentally show "off" for
 	        # a tick or two while the raw input is still pending.
 
             # Play with this to understand it
         
-        def SetRawButtonState(self, button, pressed, previouslyPressed):
+        def _RawToLowerInput(self, button, pressed, previouslyPressed):
             action = 1
             state  = 2
 
-            #checks if a button was newly pressed to prevent being called again
+            #checks if a button was newly pressed to prevent being called again for actions
             if pressed and !previouslypressed:
                 if _MapButtonToAction(button, action):
-                    _mappedInput.Actions.append(action)
+                    self._mappedInput.Actions.append(action)
                     return
 
-            #checks if a button if held
+            #checks if a button if held for states
             if pressed:
                 if _MapButtonToState(button, state):
-                    _mappedInput.States.append(state)
+                    self._mappedInput.States.append(state)
                     return
 
-            _MapAndEatButton(button)
-
+            _MapAndEatButton(button) #not sure why this is here
+            
         def Dispatch(self):
-            _input = _mappedInput
+            _input = self._mappedInput
             for callback in CallbackTable.values():
                 callback(_input)
 
         def AddCallback(self, callback, priority):
             _callbackTable.append((priority, callback))
 
-        def pushContext(self, contextID):
-            _activeContexts.add(_inputContext[contextID])
+        def pushLowerContext(self, contextID):
+            _activeLowerContexts.add(_inputLowerContext[contextID])
 
-        def popContext():
-            _activeContexts.remove(_inputContext[contextID])
+        def popLowerContext():
+            _activeLowerContexts.remove(_inputLowerContext[contextID])
+
+        def pushHigherContext(self, contextID):
+            _activeHeigherContexts.add(_inputHeigherContext[contextID])
+
+        def popHeigherContext():
+            _activeHeigherContexts.remove(_inputHeigherContext[contextID])
 
         def _MapButtonToAction(self, button, actions):
-            for context in _activeContexts:
-                if context.MapButtonToAction(abutton, action):
+            for context in _activeLowerContexts:
+                if context.MapButtonToAction(button, action):
                     return True
             return False
 
         def _MapButtonToState(self, button, state):
-            for context in _activeContexts:
+            for context in _activeLowerContexts:
                 if context.MapButtonToState(button, state):
                     return True
             return False
+
+        def _LowerToHigherInput(self):
+            for context in _activeHigherContexts:
+                context.MapLowerToHigher(_mappedInput)
 
         def _MapAndEatButton(self, button):
             action = 1
             state  = 1
 
-            if _MapButtonToAction(button, action):
-                _mappedInput.EatAction(action)
+            if _MapButtonToLowerAction(button, action):
+                self._mappedInput.EatAction(action)
 
-            if _MapButtonToState(button, state):
-                _mappedInput.EatState(state)
+            if _MapButtonToLowerState(button, state):
+                self._mappedInput.EatState(state)
 
 
         
